@@ -1,0 +1,71 @@
+networks:
+  net-nossa:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: "192.168.0.0/24"
+          gateway: "192.168.0.1"
+
+services:
+  app:
+    build:
+      context: ./app
+    networks:
+      - net-nossa
+    container_name: app
+    volumes:
+      - ./app:/usr/src/app
+    entrypoint: sh -c "npm install && npm run dev"
+    environment:
+      - MYSQL_USERNAME=root
+      - MYSQL_ROOT_PASSWORD=root
+      - MYSQL_DATABASE=nodedb
+      - MYSQL_URL=database
+    restart: always
+    tty: true
+    healthcheck:
+      test: curl --fail http://localhost:3000 || exit 1
+      interval: 50s
+      timeout: 60s
+      retries: 3
+    depends_on:
+      database:
+        condition: service_healthy
+
+  database:
+    build:
+      context: ./database
+    networks:
+      - net-nossa
+    container_name: database
+    volumes:
+      - mysql:/var/lib/mysql
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    environment:
+      - MYSQL_DATABASE=nodedb
+      - MYSQL_ROOT_PASSWORD=root
+    restart: always
+    tty: true
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p$$MYSQL_ROOT_PASSWORD"]
+      interval: 5s
+      timeout: 10s
+      retries: 3
+
+  nginx:
+    build:
+      context: ./nginx
+    networks:
+      - net-nossa
+    ports:
+      - 8080:80
+    restart: always
+    tty: true
+    depends_on:
+      app:
+        condition: service_healthy
+
+volumes:
+  mysql:
+    driver: local
